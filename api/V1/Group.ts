@@ -163,4 +163,21 @@ export default function (app: Application, baseUrl: string) {
       });
     })
   );
+
+  //
+  app.post(
+    `${apiUrl}/stations`,
+    [auth.authenticateUser, middleware.getGroupByNameOrId(body)],
+    middleware.requestWrapper(async (request, response) => {
+      await models.Group.addStationsToGroup(
+        request.user,
+        request.body.group,
+        request.body.stations
+      );
+      return responseUtil.send(response, {
+        statusCode: 200,
+        messages: ["Added stations to group."]
+      });
+    })
+  );
 }

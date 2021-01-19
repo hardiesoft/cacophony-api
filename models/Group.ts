@@ -32,6 +32,7 @@ export interface Group extends Sequelize.Model, ModelCommon<Group> {
   ) => Promise<{
     canAddUsers: boolean;
     canRemoveUsers: boolean;
+    canAddStations: boolean;
   }>;
 }
 export interface GroupStatic extends ModelStaticCommon<Group> {
@@ -50,6 +51,11 @@ export interface GroupStatic extends ModelStaticCommon<Group> {
   getFromId: (id: GroupId) => Promise<Group>;
   freeGroupname: (groupname: string) => Promise<boolean>;
   getIdFromName: (groupname: string) => Promise<GroupId | null>;
+  addStationsToGroup: (
+    authUser: User,
+    group: Group,
+    stationsToAdd: Array<{ lat: number; lng: number; name: string }>
+  ) => Promise<boolean>;
 }
 
 export default function (sequelize, DataTypes): GroupStatic {
@@ -124,6 +130,19 @@ export default function (sequelize, DataTypes): GroupStatic {
     for (const groupUser of groupUsers) {
       await groupUser.destroy();
     }
+  };
+
+  Group.addStationsToGroup = async function (authUser, group, stationsToAdd) {
+    if (!(await group.userPermissions(authUser)).canAddStations) {
+      throw new AuthorizationError(
+        "User is not a group admin so cannot add stations"
+      );
+    }
+
+    // TODO(jon):
+
+    // Add stations
+    return true;
   };
 
   /**
@@ -249,7 +268,8 @@ export default function (sequelize, DataTypes): GroupStatic {
   const newUserPermissions = function (enabled) {
     return {
       canAddUsers: enabled,
-      canRemoveUsers: enabled
+      canRemoveUsers: enabled,
+      canAddStations: enabled
     };
   };
 
