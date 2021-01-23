@@ -22,6 +22,7 @@ import models from "../../models";
 import responseUtil from "./responseUtil";
 import { body, query } from "express-validator/check";
 import { Application } from "express";
+import { format } from "util";
 
 export default function (app: Application, baseUrl: string) {
   const apiUrl = `${baseUrl}/groups`;
@@ -167,12 +168,43 @@ export default function (app: Application, baseUrl: string) {
   //
   app.post(
     `${apiUrl}/stations`,
-    [auth.authenticateUser, middleware.getGroupByNameOrId(body)],
+    [
+      auth.authenticateUser,
+      body("groupId").isInt().toInt(),
+      body("stations").custom((val, { req }) => {
+        let stations;
+        try {
+          stations = JSON.parse(val);
+        } catch (e) {
+          throw new Error("Stations JSON is malformed");
+        }
+        // Make sure stations JSON has the correct shape.
+        if (!stations.isArray()) {
+          throw new Error(
+            `Expected an array of stations in the format: [{ name: string, lat: number, lng: number }, ...]`
+          );
+        } else {
+          const expectedAttributes = ["name", "lat", "lng"];
+          for (const station of stations) {
+            for (const attr of expectedAttributes) {
+              if (!station.hasOwnProperty(attr)) {
+                throw new Error(`Station missing required property ${attr}`);
+              }
+            }
+          }
+        }
+        req.body.stations = stations;
+        return true;
+      }),
+      body("fromData").isISO8601().toDate().optional(),
+      middleware.getGroupById(body)
+    ],
     middleware.requestWrapper(async (request, response) => {
       await models.Group.addStationsToGroup(
         request.user,
-        request.body.group,
-        request.body.stations
+        request.body.groupId,
+        request.body.stations,
+        request.body.fromDate
       );
       return responseUtil.send(response, {
         statusCode: 200,

@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import Sequelize from "sequelize";
 import { ModelCommon, ModelStaticCommon } from "./index";
 import { User } from "./User";
+import { Station } from "./Station";
 
 const { AuthorizationError } = require("../api/customErrors");
 export type GroupId = number;
@@ -26,6 +27,7 @@ export type GroupId = number;
 export interface Group extends Sequelize.Model, ModelCommon<Group> {
   id: GroupId;
   addUser: (userToAdd: User, through: any) => Promise<void>;
+  addStation: (stationToAdd: Station) => Promise<void>;
   getUsers: (options: any) => Promise<User[]>;
   userPermissions: (
     user: User
@@ -34,6 +36,8 @@ export interface Group extends Sequelize.Model, ModelCommon<Group> {
     canRemoveUsers: boolean;
     canAddStations: boolean;
   }>;
+
+  getStations: () => Promise<Station[]>;
 }
 export interface GroupStatic extends ModelStaticCommon<Group> {
   addUserToGroup: (
@@ -51,11 +55,15 @@ export interface GroupStatic extends ModelStaticCommon<Group> {
   getFromId: (id: GroupId) => Promise<Group>;
   freeGroupname: (groupname: string) => Promise<boolean>;
   getIdFromName: (groupname: string) => Promise<GroupId | null>;
+
   addStationsToGroup: (
     authUser: User,
     group: Group,
-    stationsToAdd: Array<{ lat: number; lng: number; name: string }>
-  ) => Promise<boolean>;
+    stationsToAdd: Station[],
+    applyToRecordingsFromDate: Date | undefined
+  ) => Promise<void>;
+
+  removeAllStationsFromGroup: (authUser: User, group: Group) => Promise<void>;
 }
 
 export default function (sequelize, DataTypes): GroupStatic {
@@ -81,6 +89,7 @@ export default function (sequelize, DataTypes): GroupStatic {
     models.Group.hasMany(models.Device);
     models.Group.belongsToMany(models.User, { through: models.GroupUsers });
     models.Group.hasMany(models.Recording);
+    models.Group.hasMany(models.Station);
   };
 
   /**
@@ -132,17 +141,73 @@ export default function (sequelize, DataTypes): GroupStatic {
     }
   };
 
-  Group.addStationsToGroup = async function (authUser, group, stationsToAdd) {
+  // Add stations to a group.  Initially this will remove any existing stations and replace them with
+  // the new ones provided.  Or should it retire existing stations?  Should it not replace duplicates?
+  // Should it only remove stations that are no longer present?  Or retire them?
+  // As designed, this will *always* be a bulk import operation of external data from trap.nz
+  Group.addStationsToGroup = async function (
+    authUser,
+    group,
+    stationsToAdd,
+    applyToRecordingsFromDate
+  ) {
     if (!(await group.userPermissions(authUser)).canAddStations) {
       throw new AuthorizationError(
         "User is not a group admin so cannot add stations"
       );
     }
 
+    // Or maybe we should do all of this on the front-end, and show the list of
+    // what will be changed there?
+
+    // Enforce name uniqueness to group here:
+    const currentStations: Station[] = await group.getStations();
+
+    const allStations: Record<string, Station> = {};
+    const newStations: Record<string, Station> = {};
+    for (const station of currentStations) {
+      allStations[station.name] = station;
+    }
+    for (const station of stationsToAdd) {
+      newStations[station.name] = station;
+      if (!allStations.hasOwnProperty(station.name)) {
+      } else {
+        // Update lat/lng?
+      }
+    }
+    for (const station of stationsToAdd) {
+    }
+    // Diff the two lists as sets by name:
+
+    // See if any of the current stations have the same name.  If yes, update their lat/lng if changed.
+
+    // If there are new stations, add them.
+
+    // If there are old stations not present in the new list, retire the old ones.
+
+    // Apply to recordings owned by the group, according to options
+
     // TODO(jon):
 
     // Add stations
-    return true;
+  };
+
+  Group.removeAllStationsFromGroup = async function (authUser, group) {
+    if (!(await group.userPermissions(authUser)).canAddStations) {
+      throw new AuthorizationError(
+        "User is not a group admin so cannot remove station"
+      );
+    }
+
+    // Get association if already there and update it.
+    const groupStations = await models.Station.findAll({
+      where: {
+        GroupId: group.id
+      }
+    });
+    for (const groupStation of groupStations) {
+      await groupStation.destroy();
+    }
   };
 
   /**

@@ -18,6 +18,7 @@ EXPOSE 9001
 
 # PostgreSQL
 EXPOSE 5432
+Yels -l
 
 COPY docker-entrypoint.sh /
 
